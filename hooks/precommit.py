@@ -12,21 +12,18 @@ import shutil
 import sys
 import tempfile
 
-from check_pep8 import CheckPep8
+from check_comment import CheckComment
 from check_indentation import CheckIndentation
+from check_pep8 import CheckPep8
 from check_tabs import CheckTabs
 from util import get_config, run_command, run_piped_commands
 
 
-def is_python_file(filename):
+def is_file_type(filename,  filetype):
     """
-    Returns True iff the file contains python code.
-
-    For now, just use the file extension. Could peek inside the file as well, but that's slower, and it's not
-    obvious what we should look for.
+    Check if the file is of a certain type, eg. *.py, *.scala, etc.
     """
-    return os.path.splitext(filename)[1] == ".py"
-
+    return os.path.splitext(filename)[1] == "." + filetype
 
 def changed_files(include_added_files=True):
     """
@@ -36,7 +33,7 @@ def changed_files(include_added_files=True):
     if include_added_files:
         diff_filter += "A"
 
-    git_diff_command = "git diff-index --cached --name-only --diff-filter=%s HEAD" % diff_filter
+    git_diff_command = "git diff-index --name-only --diff-filter=%s HEAD" % diff_filter
     git_out, git_err, git_rc = run_command(git_diff_command)
 
     if git_err or git_rc:
@@ -79,20 +76,18 @@ def make_temp_copy(temp_dir_with_slash, filename):
 
 
 def main():
-    hooks = [CheckTabs(), CheckIndentation()]
+    #hooks = [CheckTabs(), CheckIndentation()]
+    hooks = [CheckComment()]
 
-    debug = get_config("debug", as_bool=True, default=False)
-
-    should_check_pep8 = get_config("check-pep8", as_bool=True, default=True)
-    if should_check_pep8:
-        hooks += [CheckPep8()]
+    #debug = get_config("debug", as_bool=True, default=False)
+    debug = False # @TODO: hard code for now, use get_config later on
+    
 
     incremental = get_config("incremental", as_bool=True, default=False)
-    incremental_verbose = get_config("incremental.verbose", as_bool=True,
-                                     default=False)
+    incremental_verbose = get_config("incremental.verbose", as_bool=True, default=False)
 
     if debug:
-        print "Starting hooks, with pep8 %s, incremental %s, hooks [%s]" % (should_check_pep8, incremental, ", ".join(map(str, hooks)))
+        print "Starting hooks, incremental %s, hooks [%s]" % (incremental, ", ".join(map(str, hooks)))
 
     # create temp directory for getting copies of files from staging.
     # TODO: Make all the hooks operate on strings instead of files, and get rid of this.
@@ -113,13 +108,14 @@ def main():
         if debug:
             print "Examining %s" % filename
 
-        if not is_python_file(filename):
+        if not is_file_type(filename,  'scala'):
             if debug:
-                print "Skipping %s, not a python file" % filename
+                print "Skipping %s, not a scala file" % filename
             continue
 
         relevant_hooks = [hook for hook in hooks if hook.should_process_file(filename)]
-	if debug:
+        
+        if debug:
             print "relevant hooks are: ", relevant_hooks
         if not relevant_hooks:
             if debug:
@@ -148,10 +144,10 @@ def main():
 
         temp_filename = make_temp_copy(temp_dir_with_slash, filename)
         for relevant_hook in relevant_hooks:
-            passes, error_message = relevant_hook.file_passes(temp_filename, original_filename=filename)
+            passes, error_message = relevant_hook.file_passes(temp_filename, original_filename=filename)            
+            print(filename + " --> " + error_message)
             if not passes:
                 failure_encountered = True
-                print(error_message)
                 break
 
     return int(failure_encountered)
